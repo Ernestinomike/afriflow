@@ -1,0 +1,207 @@
+// MyCoinCard Cash — Prisma schema
+// Default datasource is SQLite for instant local dev. Swap `provider`
+// to `postgresql` for production and update DATABASE_URL accordingly.
+// NOTE: SQLite doesn't support enums — we use String fields with comments.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Role: USER | ADMIN | SUPPORT
+// LoanStatus: DRAFT | SUBMITTED | UNDER_REVIEW | APPROVED | REJECTED | DISBURSED | REPAID
+// KycStatus: PENDING | IN_REVIEW | VERIFIED | REJECTED
+// DocumentType: ID_FRONT | ID_BACK | SELFIE | PROOF_OF_ADDRESS | BANK_STATEMENT | PAYSLIP | OTHER
+// NotificationType: INFO | SUCCESS | WARNING | DANGER
+// TicketStatus: OPEN | PENDING | RESOLVED | CLOSED
+
+model User {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  phone           String?  @unique
+  firstName       String
+  lastName        String
+  passwordHash    String
+  role            String   @default("USER")
+  emailVerified   Boolean  @default(false)
+  twoFactorEnabled Boolean @default(false)
+  twoFactorSecret String?
+  referralCode    String   @unique
+  referredById    String?
+  referredBy      User?    @relation("Referrals", fields: [referredById], references: [id])
+  referrals       User[]   @relation("Referrals")
+  avatarUrl       String?
+  country         String?
+  city            String?
+  address         String?
+  dateOfBirth     DateTime?
+  occupation      String?
+  monthlyIncome   Float?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  lastLoginAt     DateTime?
+  lastLoginIp     String?
+  lastUserAgent   String?
+
+  loans           Loan[]
+  documents       Document[]
+  kyc             KycRecord?
+  notifications   Notification[]
+  tickets         Ticket[]
+  messages        Message[]
+  auditLogs       AuditLog[]
+  subscriptions   Subscription[]
+  passwordResets  PasswordReset[]
+  emailTokens     EmailVerification[]
+}
+
+model Loan {
+  id            String     @id @default(cuid())
+  reference     String     @unique
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  amount        Float
+  currency      String     @default("USD")
+  termMonths    Int
+  interestRate  Float
+  purpose       String
+  status        String     @default("SUBMITTED")
+  approvedAt    DateTime?
+  rejectedAt    DateTime?
+  rejectReason  String?
+  disbursedAt   DateTime?
+  reviewerId    String?
+  notes         String?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  documents     Document[]
+  events        LoanEvent[]
+}
+
+model LoanEvent {
+  id        String   @id @default(cuid())
+  loanId    String
+  loan      Loan     @relation(fields: [loanId], references: [id], onDelete: Cascade)
+  status    String
+  message   String?
+  createdAt DateTime @default(now())
+}
+
+model KycRecord {
+  id          String    @id @default(cuid())
+  userId      String    @unique
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      String    @default("PENDING")
+  idType      String?
+  idNumber    String?
+  reviewerId  String?
+  reviewedAt  DateTime?
+  rejectReason String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model Document {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  loanId    String?
+  loan      Loan?    @relation(fields: [loanId], references: [id], onDelete: SetNull)
+  type      String
+  fileName  String
+  fileUrl   String
+  mimeType  String
+  sizeBytes Int
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   @default("INFO")
+  title     String
+  body      String
+  read      Boolean  @default(false)
+  link      String?
+  createdAt DateTime @default(now())
+}
+
+model Ticket {
+  id        String   @id @default(cuid())
+  reference String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subject   String
+  status    String   @default("OPEN")
+  priority  String   @default("normal")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  messages  Message[]
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  ticketId  String
+  ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+}
+
+model Subscription {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String?
+  entityId  String?
+  ip        String?
+  userAgent String?
+  metadata  String?
+  createdAt DateTime @default(now())
+}
+
+model PasswordReset {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model EmailVerification {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime @default(now())
+}
+
+model Broadcast {
+  id        String   @id @default(cuid())
+  subject   String
+  body      String
+  audience  String   @default("all")
+  sentAt    DateTime?
+  recipients Int     @default(0)
+  createdAt DateTime @default(now())
+}
